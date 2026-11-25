@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "filtray"
+version = "0.1.0"
+description = "FilTray - Cross-platform Python CLI tool and background service"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [
+  { name = "eltazy" }
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/eltazy/FilTray"
+Repository = "https://github.com/eltazy/FilTray.git"
+Releases = "https://github.com/eltazy/FilTray/releases"
+
+[project.optional-dependencies]
+build = [
+  "pyinstaller>=6.0",
+]
+
+[project.scripts]
+filtray = "src.main:main"

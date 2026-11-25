@@ -1,0 +1,208 @@
+name: Build and Release Executables
+
+on:
+  push:
+    tags:
+      - "v*.*.*" # Triggers when pushing a version tag like v1.0.0
+  workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
+
+permissions:
+  contents: write # Required to create GitHub Releases and upload assets
+
+env:
+  # CHANGE THESE TWO VARIABLES TO MATCH YOUR PROJECT:
+  APP_NAME: "filtray"
+  ENTRY_SCRIPT: "src/main.py"
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Build Debian (.deb) + Linux binary on Ubuntu
+  # ---------------------------------------------------------------------------
+  build-linux-debian:
+    name: Build Linux & Debian (.deb)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f pyproject.toml ]; then pip install .; fi
+          pip install pyinstaller
+
+      - name: Build standalone Linux binary with PyInstaller
+        run: |
+          pyinstaller --noconfirm --clean --onefile \
+            --name "${{ env.APP_NAME }}" \
+            "${{ env.ENTRY_SCRIPT }}"
+
+      - name: Package Linux tar.gz and Debian .deb
+        run: |
+          mkdir -p release-assets
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$VERSION" == "${GITHUB_REF_NAME}" ]]; then
+            VERSION="0.1.0"
+          fi
+
+          # 1. Create portable .tar.gz archive
+          tar -czvf "release-assets/${{ env.APP_NAME }}-linux-amd64.tar.gz" \
+            -C dist "${{ env.APP_NAME }}"
+
+          # 2. Build Debian (.deb) installer package
+          chmod +x scripts/build_deb.sh
+          ./scripts/build_deb.sh \
+            "${{ env.APP_NAME }}" \
+            "${VERSION}" \
+            "amd64" \
+            "dist/${{ env.APP_NAME }}" \
+            "release-assets"
+
+      - name: Upload Linux & Debian artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: assets-linux-debian
+          path: release-assets/*
+
+  # ---------------------------------------------------------------------------
+  # 2. Build Windows (.exe & .zip)
+  # ---------------------------------------------------------------------------
+  build-windows:
+    name: Build Windows (.exe)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          if (Test-Path requirements.txt) { pip install -r requirements.txt }
+          if (Test-Path pyproject.toml) { pip install . }
+          pip install pyinstaller
+
+      - name: Build standalone Windows .exe with PyInstaller
+        run: |
+          pyinstaller --noconfirm --clean --onefile `
+            --name "${{ env.APP_NAME }}" `
+            "${{ env.ENTRY_SCRIPT }}"
+
+      - name: Package Windows executables
+        run: |
+          New-Item -ItemType Directory -Force -Path release-assets
+          # Standalone .exe for direct download
+          Copy-Item "dist\${{ env.APP_NAME }}.exe" "release-assets\${{ env.APP_NAME }}-windows-amd64.exe"
+          # .zip bundle including README and LICENSE
+          Compress-Archive -Path "dist\${{ env.APP_NAME }}.exe", "README.md", "LICENSE" `
+            -DestinationPath "release-assets\${{ env.APP_NAME }}-windows-amd64.zip"
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: assets-windows
+          path: release-assets/*
+
+  # ---------------------------------------------------------------------------
+  # 3. Build macOS (macos-latest / arm64)
+  # ---------------------------------------------------------------------------
+  build-macos:
+    name: Build macOS (${{ matrix.arch }})
+    strategy:
+      matrix:
+        include:
+          - runner: macos-latest # Apple Silicon (M-series - arm64)
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: "pip"
+
+      - name: Install dependencies and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f pyproject.toml ]; then pip install .; fi
+          pip install pyinstaller
+
+      - name: Build standalone macOS binary with PyInstaller
+        run: |
+          pyinstaller --noconfirm --clean --onefile \
+            --name "${{ env.APP_NAME }}" \
+            "${{ env.ENTRY_SCRIPT }}"
+
+      - name: Package macOS tar.gz & native .pkg installer
+        run: |
+          mkdir -p release-assets pkg-root/usr/local/bin
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$VERSION" == "${GITHUB_REF_NAME}" ]]; then
+            VERSION="0.1.0"
+          fi
+
+          # 1. Create portable .tar.gz archive
+          tar -czvf "release-assets/${{ env.APP_NAME }}-macos-${{ matrix.arch }}.tar.gz" \
+            -C dist "${{ env.APP_NAME }}"
+
+          # 2. Build macOS native .pkg installer (installs to /usr/local/bin)
+          cp "dist/${{ env.APP_NAME }}" "pkg-root/usr/local/bin/${{ env.APP_NAME }}"
+          chmod 755 "pkg-root/usr/local/bin/${{ env.APP_NAME }}"
+          pkgbuild \
+            --root pkg-root \
+            --identifier "org.opensource.${{ env.APP_NAME }}" \
+            --version "${VERSION}" \
+            --install-location "/" \
+            "release-assets/${{ env.APP_NAME }}-${VERSION}-macos-${{ matrix.arch }}.pkg"
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: assets-macos-${{ matrix.arch }}
+          path: release-assets/*
+
+  # ---------------------------------------------------------------------------
+  # 4. Publish GitHub Release with all assets & SHA256 checksums
+  # ---------------------------------------------------------------------------
+  release:
+    name: Publish GitHub Release
+    needs: [build-linux-debian, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all built release assets
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS.txt
+        working-directory: release-assets
+        run: |
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release and attach binaries
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
