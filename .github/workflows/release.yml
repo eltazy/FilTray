@@ -117,15 +117,18 @@ jobs:
           path: release-assets/*
 
   # ---------------------------------------------------------------------------
-  # 3. Build macOS (macos-latest / arm64)
+  # 3. Build macOS (Intel x86_64 & Apple Silicon arm64)
   # ---------------------------------------------------------------------------
   build-macos:
     name: Build macOS (${{ matrix.arch }})
+    # Do not fail the entire release if GitHub's hosted macOS runner pool has a capacity outage
+    continue-on-error: true
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - runner: macos-latest # Apple Silicon (M-series - arm64)
-            arch: arm64
+          - runner: macos-15-intel # Intel macOS (runs on Intel & Apple Silicon Macs, avoids arm64 queue delays)
+            arch: amd64
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout repository
@@ -184,8 +187,12 @@ jobs:
   release:
     name: Publish GitHub Release
     needs: [build-linux-debian, build-windows, build-macos]
+    if: |
+      always() &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      needs.build-linux-debian.result == 'success' &&
+      needs.build-windows.result == 'success'
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Download all built release assets
         uses: actions/download-artifact@v4
