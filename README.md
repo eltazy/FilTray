@@ -41,13 +41,13 @@ sudo systemctl status filtray
 ### 3. macOS
 
 #### Option A: Native `.pkg` Installer
-1. Download `filtray-<version>-macos-arm64.pkg` from the [**Releases**](https://github.com/eltazy/FilTray/releases/latest) page.
+1. Download `filtray-<version>-macos-amd64.pkg` from the [**Releases**](https://github.com/eltazy/FilTray/releases/latest) page.
 2. Right-click the `.pkg` file and click **Open** to install `filtray` into `/usr/local/bin/filtray`.
 
 #### Option B: Portable `.tar.gz` Binary
 ```bash
-curl -LO https://github.com/eltazy/FilTray/releases/latest/download/filtray-macos-arm64.tar.gz
-tar -xzf filtray-macos-arm64.tar.gz
+curl -LO https://github.com/eltazy/FilTray/releases/latest/download/filtray-macos-amd64.tar.gz
+tar -xzf filtray-macos-amd64.tar.gz
 sudo mv filtray /usr/local/bin/
 ```
 
@@ -71,7 +71,7 @@ Within a few minutes, GitHub Actions will create a new GitHub Release containing
 - `filtray_0.1.0_amd64.deb` (Debian/Ubuntu package)
 - `filtray-linux-amd64.tar.gz` (Portable Linux binary)
 - `filtray-windows-amd64.exe` & `filtray-windows-amd64.zip` (Windows executable)
-- `filtray-0.1.0-macos-arm64.pkg` & `filtray-macos-arm64.tar.gz` (macOS)
+- `filtray-0.1.0-macos-amd64.pkg` & `filtray-macos-amd64.tar.gz` (macOS)
 - `SHA256SUMS.txt` (Checksums for verification)
 
 ---
