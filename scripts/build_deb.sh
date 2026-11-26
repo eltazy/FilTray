@@ -37,6 +37,13 @@ if [ -f "packaging/${APP_NAME}.desktop" ]; then
   mkdir -p "${PKG_DIR}/usr/share/applications"
   cp "packaging/${APP_NAME}.desktop" "${PKG_DIR}/usr/share/applications/${APP_NAME}.desktop"
   chmod 0644 "${PKG_DIR}/usr/share/applications/${APP_NAME}.desktop"
+
+  # System-wide XDG autostart entry so FilTray launches at login by default.
+  # Users can disable it from the tray menu ("Run at startup"), which writes a
+  # Hidden=true override to ~/.config/autostart/${APP_NAME}.desktop.
+  mkdir -p "${PKG_DIR}/etc/xdg/autostart"
+  cp "packaging/${APP_NAME}.desktop" "${PKG_DIR}/etc/xdg/autostart/${APP_NAME}.desktop"
+  chmod 0644 "${PKG_DIR}/etc/xdg/autostart/${APP_NAME}.desktop"
 fi
 
 # Calculate installed size in KB

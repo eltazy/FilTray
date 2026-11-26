@@ -44,6 +44,20 @@ filtray
 
 ---
 
+## Auto-Start & Filter Persistence
+
+FilTray is set to **launch at startup by default** (from the first time you run it), and it **re-applies your last active color filter** each time it starts.
+
+| OS | Startup mechanism |
+| --- | --- |
+| Windows | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` → `ColorFilterTray` |
+| Linux | `~/.config/autostart/filtray.desktop` (the `.deb` also installs `/etc/xdg/autostart/filtray.desktop`) |
+| macOS | `~/Library/LaunchAgents/org.opensource.filtray.plist` |
+
+To turn this off, right-click the tray icon and uncheck **Run at startup**. FilTray remembers this choice and won't turn startup back on by itself.
+
+---
+
 ## CLI Options
 
 FilTray also supports command-line flags for scripting or testing:

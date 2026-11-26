@@ -14,6 +14,7 @@ from ..backends.base import (
     ColorFilterType,
     FilterState,
 )
+from ..startup import StartupManager, restore_saved_filter
 from .popup import TrayFlyoutPopup
 from .widgets import create_tray_icon
 
@@ -73,17 +74,21 @@ class ColorFilterTrayController(QObject):
 
         self.context_menu.addSeparator()
 
-        if sys.platform == "win32":
-            self.action_startup = QAction("Run at Windows startup", self.context_menu)
-            self.action_startup.setCheckable(True)
-            self.action_startup.setChecked(self._is_windows_startup_enabled())
-            self.action_startup.triggered.connect(self._toggle_windows_startup)
-            self.context_menu.addAction(self.action_startup)
+        self.startup_manager = StartupManager()
+        self.startup_manager.initialize_default_startup()
 
+        self.action_startup = QAction("Run at startup", self.context_menu)
+        self.action_startup.setCheckable(True)
+        self.action_startup.setChecked(self.startup_manager.is_enabled())
+        self.action_startup.triggered.connect(self._toggle_startup)
+        self.context_menu.addAction(self.action_startup)
+
+        if sys.platform == "win32":
             self.action_win_settings = QAction("Open Windows Color Filter Settings...", self.context_menu)
             self.action_win_settings.triggered.connect(self._open_windows_settings)
             self.context_menu.addAction(self.action_win_settings)
-            self.context_menu.addSeparator()
+
+        self.context_menu.addSeparator()
 
         self.action_quit = QAction("Quit", self.context_menu)
         self.action_quit.triggered.connect(self.quit_app)
@@ -96,6 +101,10 @@ class ColorFilterTrayController(QObject):
         initial_state = self.backend.get_state()
         self._refresh_tray_and_menu(initial_state)
         self.tray_icon.show()
+
+        # Re-apply the last active color filter shortly after launch so the OS/compositor is ready
+        if initial_state.active:
+            QTimer.singleShot(500, self._restore_saved_filter_on_startup)
 
         # Poll OS state every 3 seconds in case user toggles Win+Ctrl+C or changes Windows Settings directly
         self.poll_timer = QTimer(self)
@@ -200,53 +209,19 @@ class ColorFilterTrayController(QObject):
             except Exception:
                 subprocess.Popen(["explorer.exe", "ms-settings:easeofaccess-colorfilter"])
 
-    def _is_windows_startup_enabled(self) -> bool:
-        if sys.platform != "win32":
-            return False
-        import winreg
+    def _toggle_startup(self, enabled: bool) -> None:
+        self.startup_manager.set_enabled(enabled)
+        self.action_startup.blockSignals(True)
+        self.action_startup.setChecked(self.startup_manager.is_enabled())
+        self.action_startup.blockSignals(False)
 
+    def _restore_saved_filter_on_startup(self) -> None:
         try:
-            with winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Software\Microsoft\Windows\CurrentVersion\Run",
-                0,
-                winreg.KEY_READ,
-            ) as key:
-                winreg.QueryValueEx(key, "ColorFilterTray")
-                return True
-        except FileNotFoundError:
-            return False
-        except OSError:
-            return False
-
-    def _toggle_windows_startup(self, enabled: bool) -> None:
-        if sys.platform != "win32":
-            return
-        import winreg
-
-        try:
-            with winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Software\Microsoft\Windows\CurrentVersion\Run",
-                0,
-                winreg.KEY_SET_VALUE,
-            ) as key:
-                if enabled:
-                    if getattr(sys, "frozen", False):
-                        cmd = f'"{sys.executable}"'
-                    else:
-                        script_path = os.path.abspath(sys.argv[0])
-                        pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
-                        exe = pythonw if os.path.exists(pythonw) else sys.executable
-                        cmd = f'"{exe}" "{script_path}"'
-                    winreg.SetValueEx(key, "ColorFilterTray", 0, winreg.REG_SZ, cmd)
-                else:
-                    try:
-                        winreg.DeleteValue(key, "ColorFilterTray")
-                    except FileNotFoundError:
-                        pass
-        except OSError:
-            pass
+            state = restore_saved_filter(self.backend)
+        except Exception:
+            state = self.backend.get_state()
+        self.popup.card.sync_from_backend()
+        self._refresh_tray_and_menu(state)
 
     def quit_app(self) -> None:
         self.tray_icon.hide()
