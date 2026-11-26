@@ -3,13 +3,13 @@ set -euo pipefail
 
 # Usage: ./scripts/build_deb.sh <app_name> <version> <arch> <binary_path> <output_dir>
 APP_NAME="${1:-filtray}"
-VERSION="${2:-0.1.0}"
+VERSION="${2:-0.2.0}"
 ARCH="${3:-amd64}"
 BINARY_PATH="${4:-dist/${APP_NAME}}"
 OUTPUT_DIR="${5:-release-assets}"
 
 MAINTAINER="${DEB_MAINTAINER:-eltazy <https://github.com/eltazy>}"
-DESCRIPTION="${DEB_DESCRIPTION:-FilTray standalone CLI and background service}"
+DESCRIPTION="${DEB_DESCRIPTION:-FilTray - Cross-platform system tray app for controlling Color Filters}"
 HOMEPAGE="${DEB_HOMEPAGE:-https://github.com/eltazy/FilTray}"
 
 if [ ! -f "$BINARY_PATH" ]; then
@@ -32,11 +32,11 @@ chmod 0755 "${PKG_DIR}/usr/bin/${APP_NAME}"
 [ -f README.md ] && cp README.md "${PKG_DIR}/usr/share/doc/${APP_NAME}/"
 [ -f LICENSE ] && cp LICENSE "${PKG_DIR}/usr/share/doc/${APP_NAME}/copyright"
 
-# Optional: Include systemd service file if present atpackaging/${APP_NAME}.service
-if [ -f "packaging/${APP_NAME}.service" ]; then
-  mkdir -p "${PKG_DIR}/lib/systemd/system"
-  cp "packaging/${APP_NAME}.service" "${PKG_DIR}/lib/systemd/system/${APP_NAME}.service"
-  chmod 0644 "${PKG_DIR}/lib/systemd/system/${APP_NAME}.service"
+# Include desktop launcher entry if present
+if [ -f "packaging/${APP_NAME}.desktop" ]; then
+  mkdir -p "${PKG_DIR}/usr/share/applications"
+  cp "packaging/${APP_NAME}.desktop" "${PKG_DIR}/usr/share/applications/${APP_NAME}.desktop"
+  chmod 0644 "${PKG_DIR}/usr/share/applications/${APP_NAME}.desktop"
 fi
 
 # Calculate installed size in KB
@@ -53,7 +53,7 @@ Installed-Size: ${INSTALLED_SIZE}
 Maintainer: ${MAINTAINER}
 Homepage: ${HOMEPAGE}
 Description: ${DESCRIPTION}
- Packaged as a self-contained executable with no external Python runtime required.
+ Packaged as a self-contained PySide6 system tray executable with no external Python runtime required.
 EOF
 
 chmod 0755 "${PKG_DIR}/DEBIAN"

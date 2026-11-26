@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=FilTray
+GenericName=Color Filters Tray
+Comment=Cross-platform system tray app for controlling screen Color Filters
+Exec=/usr/bin/filtray
+Terminal=false
+Categories=Utility;Accessibility;
+Keywords=color;filter;grayscale;accessibility;tray;
+StartupNotify=false

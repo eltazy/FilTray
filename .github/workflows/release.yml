@@ -3,24 +3,43 @@ name: Build and Release Executables
 on:
   push:
     tags:
-      - "v*.*.*" # Triggers when pushing a version tag like v1.0.0
+      - "v*.*.*" # Triggers when pushing a version tag like v0.2.0
   workflow_dispatch: # Allows manual trigger from the GitHub Actions tab
 
 permissions:
   contents: write # Required to create GitHub Releases and upload assets
 
 env:
-  # CHANGE THESE TWO VARIABLES TO MATCH YOUR PROJECT:
-  APP_NAME: "filtray"
-  ENTRY_SCRIPT: "src/main.py"
+  APP_NAME: "FilTray"
+  LINUX_BIN_NAME: "filtray"
+  ENTRY_SCRIPT: "main.py"
   PYTHON_VERSION: "3.12"
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # 0. Run unit tests
+  # ---------------------------------------------------------------------------
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run unittest suite
+        run: python -m unittest discover -s tests -v
+
   # ---------------------------------------------------------------------------
   # 1. Build Debian (.deb) + Linux binary on Ubuntu
   # ---------------------------------------------------------------------------
   build-linux-debian:
     name: Build Linux & Debian (.deb)
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -35,14 +54,12 @@ jobs:
       - name: Install dependencies and PyInstaller
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f pyproject.toml ]; then pip install .; fi
-          pip install pyinstaller
+          pip install -r requirements.txt
 
-      - name: Build standalone Linux binary with PyInstaller
+      - name: Build windowless Linux tray binary with PyInstaller
         run: |
-          pyinstaller --noconfirm --clean --onefile \
-            --name "${{ env.APP_NAME }}" \
+          pyinstaller --noconfirm --clean --windowed --onefile \
+            --name "${{ env.LINUX_BIN_NAME }}" \
             "${{ env.ENTRY_SCRIPT }}"
 
       - name: Package Linux tar.gz and Debian .deb
@@ -50,20 +67,20 @@ jobs:
           mkdir -p release-assets
           VERSION="${GITHUB_REF_NAME#v}"
           if [[ "$VERSION" == "${GITHUB_REF_NAME}" ]]; then
-            VERSION="0.1.0"
+            VERSION="0.2.0"
           fi
 
           # 1. Create portable .tar.gz archive
-          tar -czvf "release-assets/${{ env.APP_NAME }}-linux-amd64.tar.gz" \
-            -C dist "${{ env.APP_NAME }}"
+          tar -czvf "release-assets/${{ env.LINUX_BIN_NAME }}-linux-x64.tar.gz" \
+            -C dist "${{ env.LINUX_BIN_NAME }}"
 
-          # 2. Build Debian (.deb) installer package
+          # 2. Build Debian (.deb) installer package (with .desktop launcher)
           chmod +x scripts/build_deb.sh
           ./scripts/build_deb.sh \
-            "${{ env.APP_NAME }}" \
+            "${{ env.LINUX_BIN_NAME }}" \
             "${VERSION}" \
             "amd64" \
-            "dist/${{ env.APP_NAME }}" \
+            "dist/${{ env.LINUX_BIN_NAME }}" \
             "release-assets"
 
       - name: Upload Linux & Debian artifacts
@@ -73,10 +90,11 @@ jobs:
           path: release-assets/*
 
   # ---------------------------------------------------------------------------
-  # 2. Build Windows (.exe & .zip)
+  # 2. Build Windows (.exe & .zip) - Windowless system tray app
   # ---------------------------------------------------------------------------
   build-windows:
     name: Build Windows (.exe)
+    needs: test
     runs-on: windows-latest
     steps:
       - name: Checkout repository
@@ -91,24 +109,22 @@ jobs:
       - name: Install dependencies and PyInstaller
         run: |
           python -m pip install --upgrade pip
-          if (Test-Path requirements.txt) { pip install -r requirements.txt }
-          if (Test-Path pyproject.toml) { pip install . }
-          pip install pyinstaller
+          pip install -r requirements.txt
 
-      - name: Build standalone Windows .exe with PyInstaller
+      - name: Build windowless Windows .exe with PyInstaller
         run: |
-          pyinstaller --noconfirm --clean --onefile `
+          pyinstaller --noconfirm --clean --windowed --onefile `
             --name "${{ env.APP_NAME }}" `
             "${{ env.ENTRY_SCRIPT }}"
 
       - name: Package Windows executables
         run: |
           New-Item -ItemType Directory -Force -Path release-assets
-          # Standalone .exe for direct download
-          Copy-Item "dist\${{ env.APP_NAME }}.exe" "release-assets\${{ env.APP_NAME }}-windows-amd64.exe"
+          # Standalone .exe for direct download (runs on 64-bit Intel & AMD Windows)
+          Copy-Item "dist\${{ env.APP_NAME }}.exe" "release-assets\${{ env.APP_NAME }}-windows-x64.exe"
           # .zip bundle including README and LICENSE
           Compress-Archive -Path "dist\${{ env.APP_NAME }}.exe", "README.md", "LICENSE" `
-            -DestinationPath "release-assets\${{ env.APP_NAME }}-windows-amd64.zip"
+            -DestinationPath "release-assets\${{ env.APP_NAME }}-windows-x64.zip"
 
       - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
@@ -117,18 +133,18 @@ jobs:
           path: release-assets/*
 
   # ---------------------------------------------------------------------------
-  # 3. Build macOS (Intel x86_64 & Apple Silicon arm64)
+  # 3. Build macOS (.app .zip & native .pkg installer)
   # ---------------------------------------------------------------------------
   build-macos:
     name: Build macOS (${{ matrix.arch }})
-    # Do not fail the entire release if GitHub's hosted macOS runner pool has a capacity outage
+    needs: test
     continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-15-intel # Intel macOS (runs on Intel & Apple Silicon Macs, avoids arm64 queue delays)
-            arch: amd64
+          - runner: macos-15-intel # Intel macOS (runs on Intel & Apple Silicon Macs via Rosetta 2)
+            arch: x64
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Checkout repository
@@ -143,34 +159,32 @@ jobs:
       - name: Install dependencies and PyInstaller
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f pyproject.toml ]; then pip install .; fi
-          pip install pyinstaller
+          pip install -r requirements.txt
 
-      - name: Build standalone macOS binary with PyInstaller
+      - name: Build macOS .app bundle with PyInstaller
         run: |
-          pyinstaller --noconfirm --clean --onefile \
+          pyinstaller --noconfirm --clean --windowed --onefile \
             --name "${{ env.APP_NAME }}" \
             "${{ env.ENTRY_SCRIPT }}"
 
-      - name: Package macOS tar.gz & native .pkg installer
+      - name: Package macOS .app zip & native .pkg installer
         run: |
-          mkdir -p release-assets pkg-root/usr/local/bin
+          mkdir -p release-assets pkg-root/Applications
           VERSION="${GITHUB_REF_NAME#v}"
           if [[ "$VERSION" == "${GITHUB_REF_NAME}" ]]; then
-            VERSION="0.1.0"
+            VERSION="0.2.0"
           fi
 
-          # 1. Create portable .tar.gz archive
-          tar -czvf "release-assets/${{ env.APP_NAME }}-macos-${{ matrix.arch }}.tar.gz" \
-            -C dist "${{ env.APP_NAME }}"
+          # 1. Portable zipped .app bundle
+          ditto -c -k --sequesterRsrc --keepParent \
+            "dist/${{ env.APP_NAME }}.app" \
+            "release-assets/${{ env.APP_NAME }}-macos-${{ matrix.arch }}.zip"
 
-          # 2. Build macOS native .pkg installer (installs to /usr/local/bin)
-          cp "dist/${{ env.APP_NAME }}" "pkg-root/usr/local/bin/${{ env.APP_NAME }}"
-          chmod 755 "pkg-root/usr/local/bin/${{ env.APP_NAME }}"
+          # 2. Native .pkg installer (installs FilTray.app into /Applications)
+          cp -R "dist/${{ env.APP_NAME }}.app" "pkg-root/Applications/${{ env.APP_NAME }}.app"
           pkgbuild \
             --root pkg-root \
-            --identifier "org.opensource.${{ env.APP_NAME }}" \
+            --identifier "org.opensource.filtray" \
             --version "${VERSION}" \
             --install-location "/" \
             "release-assets/${{ env.APP_NAME }}-${VERSION}-macos-${{ matrix.arch }}.pkg"

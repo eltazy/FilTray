@@ -4,15 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "filtray"
-version = "0.1.0"
-description = "FilTray - Cross-platform Python CLI tool and background service"
+version = "0.2.0"
+description = "FilTray - Cross-platform system tray app for controlling Color Filters"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [
   { name = "eltazy" }
 ]
-dependencies = []
+dependencies = [
+  "PySide6>=6.6.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/eltazy/FilTray"
@@ -21,8 +23,11 @@ Releases = "https://github.com/eltazy/FilTray/releases"
 
 [project.optional-dependencies]
 build = [
-  "pyinstaller>=6.0",
+  "pyinstaller>=6.0.0",
 ]
 
 [project.scripts]
-filtray = "src.main:main"
+filtray = "color_filter_tray.app:main"
+
+[tool.setuptools.packages.find]
+include = ["color_filter_tray*"]
